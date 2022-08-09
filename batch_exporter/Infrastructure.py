@@ -122,12 +122,13 @@ class WNode:
 
     @property
     def trim(self):
-        trim = self.meta_safe_get("t")
-
-        if trim[0].lower() in ["false", "no"]:
-            return False
-        else:
-            return trim
+        return False
+        # trim = self.meta_safe_get("t")
+        #
+        # if trim[0].lower() in ["false", "no"]:
+        #     return False
+        # else:
+        #     return trim
 
     @property
     def parent(self):
@@ -160,6 +161,7 @@ class WNode:
     def isExportable(self):
         return (
             self.isPaintLayer() or self.isGroupLayer() or self.isFileLayer() or self.isVectorLayer()
+            or self.isCloneLayer()
         )  # yapf: disable
 
     def isMarked(self):

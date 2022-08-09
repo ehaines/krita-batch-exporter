@@ -1,5 +1,4 @@
-# Batch Exporter: Krita Plugin for Game Developers and Graphic Designers
-
+# Batch Exporter: Krita Plugin for Me
 Free Krita plugin for designers, game artists and digital artists to work more
 productively:
 

@@ -34,6 +34,15 @@ def ensureRGBAU8(doc):
     if not ensured:
         raise ValueError("only RGBA 8-bit depth supported!")
 
+def exportAllDocuments(cfg, statusBar):
+    msg, timeout = (cfg["done"]["msg"].format("Exported all documents."), cfg["done"]["timeout"])
+    try:
+        for doc in KI.documents():
+            KI.setActiveDocument(doc)
+            exportAllLayers(cfg, statusBar)
+    except ValueError as e:
+        msg, timeout = cfg["error"]["msg"].format(e), cfg["error"]["timeout"]
+    statusBar.showMessage(msg, timeout)
 
 def exportAllLayers(cfg, statusBar):
     msg, timeout = (cfg["done"]["msg"].format("Exported all layers."), cfg["done"]["timeout"])
@@ -129,11 +138,14 @@ class GameArtTools(DockWidget):
         renameButton = QPushButton()
         renameButton.setIcon(KI.icon("view-refresh"))
         statusBar = QStatusBar()
+        exportAllDocumentsButton = QPushButton("All Documents")
 
         exportLabel.setToolTip("Export individual images")
         exportAllLayersButton.setToolTip("Export all layers with metadata")
+        exportAllDocumentsButton.setToolTip("Export all documents with metadata")
         exportSelectedLayersButton.setToolTip("Export selected layers only")
         renameButton.setToolTip("Batch update selected layer names and metadata")
+
 
         # COA Tools GroupBox
         coaToolsGroupBox = QGroupBox("COA Tools")
@@ -154,6 +166,7 @@ class GameArtTools(DockWidget):
 
         vboxlayout.addWidget(exportAllLayersButton)
         vboxlayout.addWidget(exportSelectedLayersButton)
+        vboxlayout.addWidget(exportAllDocumentsButton)
 
         vboxlayout.addWidget(coaToolsGroupBox)
         vboxlayout.addWidget(renameLabel)
@@ -173,6 +186,9 @@ class GameArtTools(DockWidget):
             partial(exportSelectedLayers, CONFIG, statusBar)
         )
         exportAllLayersButton.released.connect(partial(exportAllLayers, CONFIG, statusBar))
+        exportAllDocumentsButton.released.connect(
+            partial(exportAllDocuments, CONFIG, statusBar)
+        )
         coaToolsExportSelectedLayersButton.released.connect(
             partial(exportCOATools, "selected", CONFIG, statusBar)
         )

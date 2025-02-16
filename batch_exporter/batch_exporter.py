@@ -38,13 +38,13 @@ def exportAllDocuments(cfg, statusBar):
     msg, timeout = (cfg["done"]["msg"].format("Exported all documents."), cfg["done"]["timeout"])
     try:
         for doc in KI.documents():
-            KI.setActiveDocument(doc)
-            exportAllLayers(cfg, statusBar)
+            exportDocumentLayers(doc, cfg)
     except ValueError as e:
         msg, timeout = cfg["error"]["msg"].format(e), cfg["error"]["timeout"]
     statusBar.showMessage(msg, timeout)
 
 def exportAllLayers(cfg, statusBar):
+    #todo use exportDocumentLayers and test to see if it still works
     msg, timeout = (cfg["done"]["msg"].format("Exported all layers."), cfg["done"]["timeout"])
     try:
         doc = KI.activeDocument()
@@ -59,6 +59,15 @@ def exportAllLayers(cfg, statusBar):
     except ValueError as e:
         msg, timeout = cfg["error"]["msg"].format(e), cfg["error"]["timeout"]
     statusBar.showMessage(msg, timeout)
+
+def exportDocumentLayers(doc, cfg):
+        root = doc.rootNode()
+        root = WNode(cfg, root)
+
+        dirName = os.path.dirname(doc.fileName())
+        it = filter(lambda n: n.isExportable() and n.isMarked(), iterPre(root))
+        it = map(partial(flip(WNode.save), dirName), it)
+        kickstart(it)
 
 
 def exportSelectedLayers(cfg, statusBar):
@@ -138,7 +147,7 @@ class GameArtTools(DockWidget):
         renameButton = QPushButton()
         renameButton.setIcon(KI.icon("view-refresh"))
         statusBar = QStatusBar()
-        exportAllDocumentsButton = QPushButton("All Documents")
+        exportAllDocumentsButton = QPushButton("All Open Documents")
 
         exportLabel.setToolTip("Export individual images")
         exportAllLayersButton.setToolTip("Export all layers with metadata")

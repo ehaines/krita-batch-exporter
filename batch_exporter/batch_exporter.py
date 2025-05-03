@@ -44,7 +44,6 @@ def exportAllDocuments(cfg, statusBar):
     statusBar.showMessage(msg, timeout)
 
 def exportAllLayers(cfg, statusBar):
-    #todo use exportDocumentLayers and test to see if it still works
     msg, timeout = (cfg["done"]["msg"].format("Exported all layers."), cfg["done"]["timeout"])
     try:
         doc = KI.activeDocument()

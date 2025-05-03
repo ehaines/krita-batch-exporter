@@ -9,7 +9,7 @@ from itertools import groupby, product, starmap, tee
 from pathlib import Path
 
 from krita import Krita
-from PyQt5.QtCore import QSize
+from PyQt5.QtCore import QSize, qDebug
 from PyQt5.QtGui import QColor, QImage, QPainter
 
 from .Utils import flip, kickstart
@@ -22,26 +22,62 @@ KI = Krita.instance()
 
 def nodeToImage(wnode):
     """
-    Returns an QImage 8-bit sRGB
+    Returns a QImage 8-bit sRGB with parent transform masks applied
     """
-    SRGB_PROFILE = "sRGB-elle-V2-srgbtrc.icc"
-    [x, y, w, h] = wnode.bounds
+    def log(msg):
+        """Helper to log messages to Krita's Script Output docker"""
+        qDebug(msg + "\n")
 
-    is_srgb = (
-        wnode.node.colorModel() == "RGBA"
-        and wnode.node.colorDepth() == "U8"
-        and wnode.node.colorProfile().lower() == SRGB_PROFILE.lower()
-    )
+    try:
+        if not wnode or not wnode.node:
+            raise ValueError("Invalid node provided to nodeToImage")
+    
+        if not wnode.isExportable():
+            raise ValueError(f"Node {wnode.node.name()} is not exportable")
+        
+        [x, y, w, h] = wnode.bounds
+        log(f"Processing node: {wnode.node.name()}")
+        log(f"Node type: {wnode.node.type()}")
+        SRGB_PROFILE = "sRGB-elle-V2-srgbtrc.icc"        
 
-    if is_srgb:
-        pixel_data = wnode.node.projectionPixelData(x, y, w, h).data()
-    else:
+        is_srgb = (
+            wnode.node.colorModel() == "RGBA"
+            and wnode.node.colorDepth() == "U8"
+            and wnode.node.colorProfile().lower() == SRGB_PROFILE.lower()
+        )
+
+        # Create working node
         temp_node = wnode.node.duplicate()
-        temp_node.setColorSpace("RGBA", "U8", SRGB_PROFILE)
+        if not temp_node:
+            raise ValueError(f"Failed to duplicate node {wnode.node.name()}")
+        
+        log(f"Duplicated node: {temp_node.name()}")
+        if not is_srgb:
+            temp_node.setColorSpace("RGBA", "U8", SRGB_PROFILE)
+
+        # Get and apply parent transform masks
+        parent = wnode.parent
+        if parent and parent.isGroupLayer() and parent.hasMasks():
+            log(f"Parent group: {parent.node.name()}")
+            for child in parent.children:
+                if child.isMask():
+                    log(f"Found mask on parent: {child.node.name()} of type {child.node.type()}")
+                    mask_copy = child.node.duplicate()
+                    temp_node.addChildNode(mask_copy, None)
+                    log(f"added child node: {mask_copy.name()}")
+
+        # bounds = temp_node.bounds()
+        # x, y, w, h = bounds.x(), bounds.y(), bounds.width(), bounds.height()
+        # Get projection with transforms applied
         pixel_data = temp_node.projectionPixelData(x, y, w, h).data()
 
-    return QImage(pixel_data, w, h, QImage.Format_ARGB32)
+        # Clean up
+        temp_node.remove()
 
+        return QImage(pixel_data, w, h, QImage.Format_ARGB32)
+    except Exception as e:
+        print("Failed to convert node to image: {}".format(e))   
+        raise
 
 def expandAndFormat(img, margin=0, is_jpg=False):
     """
@@ -208,6 +244,24 @@ class WNode:
 
     def isColorizeMask(self):
         return self.type == "colorizemask"
+
+    def hasMasks(self):
+        """Returns True if the node has any mask layers"""
+        return any(child.isMask() for child in self.children)
+
+    # You can also check for specific mask types:
+    def hasTransparencyMasks(self):
+        """Returns True if the node has any transparency masks"""
+        return any(child.isTransparencyMask() for child in self.children)
+
+    def hasFilterMasks(self):
+        """Returns True if the node has any filter masks"""
+        return any(child.isFilterMask() for child in self.children)
+   
+    def hasTransfornMasks(self):
+        """Returns True if the node has any transform masks"""
+        return any(child.isTransformMask() for child in self.children)
+
 
     def inheritedMetadata(self):
         non_export_parents = filter(lambda n: n.parent and not n.isMarked(), path(self))

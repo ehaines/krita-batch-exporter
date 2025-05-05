@@ -10,7 +10,7 @@ from pathlib import Path
 
 from krita import Krita
 from PyQt5.QtCore import QSize, qDebug
-from PyQt5.QtGui import QColor, QImage, QPainter
+from PyQt5.QtGui import QColor, QImage, QPainter, QTransform
 
 from .Utils import flip, kickstart
 from .Utils.Export import exportPath, sanitize
@@ -45,38 +45,67 @@ def nodeToImage(wnode):
             and wnode.node.colorDepth() == "U8"
             and wnode.node.colorProfile().lower() == SRGB_PROFILE.lower()
         )
-
-        # Create working node
-        temp_node = wnode.node.duplicate()
-        if not temp_node:
-            raise ValueError(f"Failed to duplicate node {wnode.node.name()}")
         
-        log(f"Duplicated node: {temp_node.name()}")
+        parent = wnode.parent
+        temp_node = wnode.node.duplicate()
         if not is_srgb:
             temp_node.setColorSpace("RGBA", "U8", SRGB_PROFILE)
-
-        # Get and apply parent transform masks
-        parent = wnode.parent
-        if parent and parent.isGroupLayer() and parent.hasMasks():
-            log(f"Parent group: {parent.node.name()}")
-            for child in parent.children:
-                if child.isMask():
-                    log(f"Found mask on parent: {child.node.name()} of type {child.node.type()}")
-                    mask_copy = child.node.duplicate()
-                    temp_node.addChildNode(mask_copy, None)
-                    log(f"added child node: {mask_copy.name()}")
-
-        # bounds = temp_node.bounds()
-        # x, y, w, h = bounds.x(), bounds.y(), bounds.width(), bounds.height()
-        # Get projection with transforms applied
         pixel_data = temp_node.projectionPixelData(x, y, w, h).data()
-
-        # Clean up
+        result_image = QImage(pixel_data, w, h, QImage.Format_ARGB32)
         temp_node.remove()
+        # Get and apply parent transform masks to the result image
+        # Check if the parent is a group layer and has transform masks
 
-        return QImage(pixel_data, w, h, QImage.Format_ARGB32)
+        if parent and parent.isGroupLayer() and parent.hasTransformMasks():
+            for child in parent.children:
+                if child.isTransformMask():
+                    log(f"Applying transform from: {child.node.name()}")
+                    transform = child.node.finalAffineTransform()
+                    if transform:
+                        transformed = QImage(w, h, QImage.Format_ARGB32)
+                        transformed.fill(QColor(0, 0, 0, 0))  # Start transparent
+                        
+                        painter = QPainter(transformed)
+                        painter.setTransform(transform, True)
+                        painter.drawImage(0, 0, result_image)  # Draw original once
+                        painter.end()
+                        
+                        result_image = transformed # Update the result image for next transform
+        return result_image
+        # Below: commented out code for future reference
+        # Create working node
+        # temp_node = wnode.node.duplicate()
+        # painter = QPainter(temp_node)
+        # if not temp_node:
+        #     raise ValueError(f"Failed to duplicate node {wnode.node.name()}")
+        
+        # log(f"Duplicated node: {temp_node.name()}")
+        # if not is_srgb:
+        #     temp_node.setColorSpace("RGBA", "U8", SRGB_PROFILE)
+
+        # # Get and apply parent transform masks
+        # parent = wnode.parent
+        # parent = wnode.parent
+        # if parent and parent.isGroupLayer() and parent.hasMasks():
+        #     log(f"Parent group: {parent.node.name()}")
+        #     # Add masks from parent to temp node
+        #     for child in parent.children:
+        #         if child.isMask():
+        #             log(f"Found mask: {child.node.name()} of type {child.node.type()}")
+        #             mask_copy = child.node.duplicate()
+        #             success = temp_node.addChildNode(mask_copy, None)
+        #             if not success:
+        #                 log(f"Failed to add mask {mask_copy.name()} to node {temp_node.name()}")
+        #             log(f"Added mask {mask_copy.name()}: {'Success' if success else 'Failed'}")
+
+        # Get bounds after transforms
+        # bounds = wnode.bounds()
+        # x, y, w, h = bounds.x(), bounds.y(), bounds.width(), bounds.height()
+        
+
+        # return QImage(pixel_data, w, h, QImage.Format_ARGB32)
     except Exception as e:
-        print("Failed to convert node to image: {}".format(e))   
+        log(f"Failed to convert node to image: {e}")
         raise
 
 def expandAndFormat(img, margin=0, is_jpg=False):
@@ -258,7 +287,7 @@ class WNode:
         """Returns True if the node has any filter masks"""
         return any(child.isFilterMask() for child in self.children)
    
-    def hasTransfornMasks(self):
+    def hasTransformMasks(self):
         """Returns True if the node has any transform masks"""
         return any(child.isTransformMask() for child in self.children)
 

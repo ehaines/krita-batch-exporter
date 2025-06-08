@@ -18,6 +18,7 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QGroupBox,
     QWidget,
+    QCheckBox,
 )
 import os
 from .Config import CONFIG
@@ -114,12 +115,29 @@ def exportCOATools(mode, cfg, statusBar):
     statusBar.showMessage(msg, timeout)
 
 
-def renameLayers(cfg, statusBar, lineEdit):
+def renameLayers(cfg, statusBar, lineEdit, recursiveCheckBox):
     msg, timeout = (cfg["done"]["msg"].format("Renaming successful!"), cfg["done"]["timeout"])
     try:
         nodes = KI.activeWindow().activeView().selectedNodes()
-        it = map(partial(WNode, cfg), nodes)
-        it = map(partial(flip(WNode.rename), lineEdit.text()), it)
+        wnodes = [WNode(cfg, node) for node in nodes]
+        
+        # If recursive is enabled, collect all children from group layers
+        if recursiveCheckBox.isChecked():
+            all_nodes = []
+            for wnode in wnodes:
+                if wnode.isGroupLayer():
+                    # Add the group itself and all its children recursively
+                    all_nodes.extend(iterPre(wnode))
+                else:
+                    # Add non-group layers directly
+                    all_nodes.append(wnode)
+            target_nodes = all_nodes
+        else:
+            # Use only selected nodes (original behavior)
+            target_nodes = wnodes
+        
+        # Apply renaming to all target nodes
+        it = map(partial(flip(WNode.rename), lineEdit.text()), target_nodes)
         kickstart(it)
     except ValueError as e:
         msg, timeout = cfg["error"]["msg"].format(e), cfg["error"]["timeout"]
@@ -143,6 +161,7 @@ class GameArtTools(DockWidget):
         exportSelectedLayersButton = QPushButton("Selected Layers")
         renameLabel = QLabel("Update Name and Metadata")
         renameLineEdit = QLineEdit()
+        renameRecursiveCheckBox = QCheckBox("Recursive")
         renameButton = QPushButton()
         renameButton.setIcon(KI.icon("view-refresh"))
         statusBar = QStatusBar()
@@ -153,6 +172,7 @@ class GameArtTools(DockWidget):
         exportAllDocumentsButton.setToolTip("Export all documents with metadata")
         exportSelectedLayersButton.setToolTip("Export selected layers only")
         renameButton.setToolTip("Batch update selected layer names and metadata")
+        renameRecursiveCheckBox.setToolTip("Applies to groups and subgroups")
 
 
         # COA Tools GroupBox
@@ -182,6 +202,7 @@ class GameArtTools(DockWidget):
         hboxlayout = QHBoxLayout()
         hboxlayout.addWidget(renameLineEdit)
         hboxlayout.addWidget(renameButton)
+        hboxlayout.addWidget(renameRecursiveCheckBox)
 
         vboxlayout.addLayout(hboxlayout)
         vboxlayout.addStretch()
@@ -204,9 +225,9 @@ class GameArtTools(DockWidget):
             partial(exportCOATools, "document", CONFIG, statusBar)
         )
         renameLineEdit.returnPressed.connect(
-            partial(renameLayers, CONFIG, statusBar, renameLineEdit)
+            partial(renameLayers, CONFIG, statusBar, renameLineEdit, renameRecursiveCheckBox)
         )
-        renameButton.released.connect(partial(renameLayers, CONFIG, statusBar, renameLineEdit))
+        renameButton.released.connect(partial(renameLayers, CONFIG, statusBar, renameLineEdit, renameRecursiveCheckBox))
 
     def canvasChanged(self, canvas):
         pass
